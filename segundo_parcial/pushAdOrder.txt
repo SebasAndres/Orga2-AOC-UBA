@@ -1,0 +1,9 @@
+; PushAD Order
+%define offset_EAX 28
+%define offset_ECX 24
+%define offset_EDX 20
+%define offset_EBX 16
+%define offset_ESP 12
+%define offset_EBP 8
+%define offset_ESI 4
+%define offset_EDI 0

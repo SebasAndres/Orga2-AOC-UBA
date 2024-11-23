@@ -1,0 +1,97 @@
+------------------------------------------------------------------------------------------------------------
+Ej [1]
+
+Acceder y copiar datos de una tarea a otra.
+
+Todas las tareas tienen una pila nivel usuario y una pila de kernel para esa tarea (cata tarea tiene su pila nivel 0)
+
+En la interrupcion:
+
+    _isrXX:
+        pushad
+
+        mov [esp + offset_eax], eax 
+        ; esto está porque popad restaura todos los valores de los registros incluyendo popad
+        ; entonces tenemos que ir a la pila y pisar el valor del EAX que se va a restaurar con el resultado  
+
+        popad
+        iret
+
+
+Recuerdo: 
+* Cuando alguien es interrumpido, no se debe enterar de que pasó la interrupcion (por eso están los pushad y popad)
+
+
+CopyPage copia una pagina entera (4kb), nosotros solo necesitamos 4bytes.
+
+
+_isr96:
+    pushad
+
+    push ESI
+    push EDI
+    push EAX
+    call espiar
+
+    ; acompodo la pila (simil a pop) como no necesto los datos no lo leo para evitar el costo de acceder a memoria  
+    add ESP, 12 ; 3 variables para adelante
+
+    ; IMPORTANTE para no pisar el resultado con el popad
+    mov [ESP + offset_EAX], eax
+
+    popad ; agarra bien lo que se pusheo al principio
+    iret 
+
+
+int espiar(uint16 selector, uint32* dir_a_espiar, uint32* dir_a_escribir){
+
+    cr3_tarea_espia = rcr3();
+    paddr dir_fisica_espiar = obtenerDirFisica(cr3_tarea_a_espiar, dir_a_espiar); // devuelve la pagina entera (sin el offset de los 4bytes q necesito)
+
+    // falla si la dir de memoria no es valida
+    if (dir_fisica_espiar == 0) return 1;
+
+    mmu_map_page(cr3_tarea_espia, SRC_VIRT_PAGE, dir_fisica_a_espiar, MMU_level0_R | MMU_level0_W);
+    dato_a_copiar = SRC_VIRT_PAGE | VIRT_PAGE_OFFSET(dir_a_espiar)
+    mmu_unmpa_page(); //la desmapeamos porque es una rdir reservada de copy_page
+
+    dir_a_escribir[0] = dato_a_copiar;
+
+    return 0;
+}
+
+
+Selector a cr3 :
+    - shiftear 3 bits del selector >> (obtengo indice de la gdt)
+    - obtener el descriptor de la tarea
+    - acceder al tss de la tarea y sacar el cr3
+
+
+Pudimos leer el page directory de otra tarea porque tenemos identity mapping 
+
+Si la estructura de painacion de la otra tarea estuviera mapeada a tareas que no tengo mapeada
+
+------------------------------------------------------------------------------------------------------------
+EJ 2: Modificar scheduler
+
+- El scheduelr debe distinguir tareas prioritarias vs no prioritarias (tiennenen 0xFAFAFA en EDX al dejar de ejcutarse). Las tareas pausadas y/o no ejecutables no pueden
+ser prioritarias
+
+CLOCK_ISR (isr.asm) --> SCHEDUÑER_NEXT_TASK (sched.c)--> 
+
+Vemos los casos posibles:
+    1. No hay tareas con prioridad
+    2. Hay 1 tarea con prioridad (no queres que una unica tarea prioritaria se adueñe del sistema, que sea 1 y 1 para evitar poblemas si se tilda la prioritaria)
+        haciendo round robin sobre las tareas no prioritarias
+        P -> nP1 -> P -> nP2 -> P -> nP1
+
+        Para hacer esto guardamos globalmente en sched.c la última tarea prioritaria y no prioritaria ejecutada.
+
+    3. Hay mas de una tarea con prioridads (scheduler round robin sobre las tareas prioritarias hasta que no haya mas)
+
+¿cómo identificamos que una tarea es o no prioritaria?
+-> str bx baja el contenido del ax al bx
+
+
+
+
