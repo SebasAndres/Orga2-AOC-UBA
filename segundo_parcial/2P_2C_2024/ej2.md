@@ -1,5 +1,7 @@
 ## Ejercicio 2
 
+> Esta era la idea pero falta agregar unas correcciones que hice en papel.
+
 Cada tarea guarda en la dir virtual 0xACCE50 (mapeada como r/w) un uint8_t con posibles valores 0,1,2
 Para cada tarea:
 0: la tarea no accedera al buffer de video
