@@ -1,0 +1,7 @@
+{
+      "files.associations": {
+            "*.embeddedhtml": "html",
+            "*.asm": "asm-collection",
+            "assert.h": "c"
+      }
+}

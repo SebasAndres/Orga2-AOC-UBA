@@ -1,50 +1,24 @@
 section .rodata
-; Acá se pueden poner todas las máscaras y datos que necesiten para el filtro
-ALIGN 16
-	todos128: times 8 dw 128
-	todos0: times 8 dw 0
-	mask_ammount: times 8 db 0x00, 0x0F 
-	mask_alpha: times 4 db 0x00, 0x00, 0x00, 0xFF
-    	mask_ej2b: db 0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 0x01, 0x02, 0x02, 0x02, 0x02, 0x03, 0x03, 0x03, 0x03
-	mask_shuffle_b: db 0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3 	; cuadriplicamos los valores en mask
-	
+	; Acá se pueden poner todas las máscaras y datos que necesiten para el filtro
+	ALIGN 16
+	maskContraste times 8 db 0x00, 0xFF ; En el byte 00 está el dato, el resto de bytes de xmm1 tiene 0
+	mask128 times 8 dw 128
+	maskAlpha times 4 db 0,0,0,255
+
 section .text
 
-; Marca un ejercicio como aún no completado (esto hace que no corran sus tests)
-FALSE EQU 0
-; Marca un ejercicio como hecho
-TRUE  EQU 1
+FALSE EQU 0 ; Marca un ejercicio como aún no completado (esto hace que no corran sus tests)
+TRUE  EQU 1 ; Marca un ejercicio como hecho
 
-; Marca el ejercicio 2A como hecho (`true`) o pendiente (`false`).
-;
-; Funciones a implementar:
-;   - ej2a
 global EJERCICIO_2A_HECHO
 EJERCICIO_2A_HECHO: db TRUE ; Cambiar por `TRUE` para correr los tests.
 
-; Marca el ejercicio 2B como hecho (`true`) o pendiente (`false`).
-;
-; Funciones a implementar:
-;   - ej2b
 global EJERCICIO_2B_HECHO
 EJERCICIO_2B_HECHO: db TRUE ; Cambiar por `TRUE` para correr los tests.
 
-; Marca el ejercicio 2C (opcional) como hecho (`true`) o pendiente (`false`).
-;
-; Funciones a implementar:
-;   - ej2c
 global EJERCICIO_2C_HECHO
 EJERCICIO_2C_HECHO: db FALSE ; Cambiar por `TRUE` para correr los tests.
 
-; Dada una imagen origen ajusta su contraste de acuerdo a la parametrización
-; provista.
-;
-; Parámetros:
-;   - dst:    La imagen destino. Es RGBA (8 bits sin signo por canal).
-;   - src:    La imagen origen. Es RGBA (8 bits sin signo por canal).
-;   - width:  El ancho en píxeles de `dst`, `src` y `mask`.
-;   - height: El alto en píxeles de `dst`, `src` y `mask`.
-;   - amount: El nivel de intensidad a aplicar.
 global ej2a
 ej2a:
 	; r/m64 = rgba_t*  dst [rdi]
@@ -53,74 +27,77 @@ ej2a:
 	; r/m32 = uint32_t height [rcx]
 	; r/m8  = uint8_t  amount [r8]
 
-	;prologo
+	; Prologo
 	push rbp
 	mov rbp, rsp
 
-	;# iteraciones = totalPixeles / pixelPorIteracion = width * height / 4
-	xor r9, r9 
+	; # Iteraciones = totalPixeles / pixelPorIteracion = width * height / 4
 	mov r10, rdx 
 	imul r10, rcx
 	shr r10, 2 
 
-	;cargo las mascaras
-	movdqu xmm13, [todos128] ; 8 words con el valor 128
-	movdqu xmm12, [mask_shuffle_b] ; cuadriplicamos los valores en mask
+	; Mascaras
+	; XMM4 <-- Mask 128
+	; XMM6 <-- Mask 255
+	movdqu xmm4, [mask128]
+	movdqu xmm6, [maskAlpha]
 
-	; ammount a xmm4 (8 words con el valor de amount)
-	movdqu xmm3, [mask_ammount] 
+	; Pasamos el contraste a 8 words en un xmm
+	; XMM1 <-- Contraste
+	movdqu xmm0, [maskContraste] 
 	movzx eax, r8b        
-	movd xmm4, eax       
-	pshufb xmm4, xmm3 
+	movd xmm1, eax       
+	pshufb xmm1, xmm0
 
-	.ciclo:
-		; leo los 4 pixeles de src
-		movdqu xmm5, [rsi]
+	; Loop
+	xor r9, r9 ; i
+	.loop:			
+		; Leemos los 4 pixeles
+		movdqu xmm2, [rsi] ; tengo los 4 pixeles acá 
 
-		; paso de 8bits a 16bits
-		movdqu xmm6, xmm5
+		; Distribuyo en dos XMM los 4 pixeles de la iteracion (xmm2, xmm3)
+		movdqu xmm3, xmm2
 		pxor xmm0, xmm0
-		punpcklbw xmm5, xmm0
-		punpckhbw xmm6, xmm0
+		punpcklbw xmm2, xmm0
+		punpckhbw xmm3, xmm0
 
-		; resto 128 a cada componente de los 4 pixeles
-		psubw xmm5, xmm13
-		psubw xmm6, xmm13
+		; Restamos 128 en cada color (como word)
+		psubw xmm2, xmm4
+		psubw xmm3, xmm4
 
-		; multiplico por amount
-		pmullw xmm5, xmm4
-		pmullw xmm6, xmm4
+		; Multiplicamos por C
+		pmullw xmm2, xmm1
+		pmullw xmm3, xmm1
 
-		; divido por 32
-		psraw xmm5, 5
-		psraw xmm6, 5
+		; Dividimos por 32
+		psraw xmm2, 5
+		psraw xmm3, 5
 
-		; sumo 128
-		paddw xmm5, xmm13
-		paddw xmm6, xmm13
+		; Sumamos 128 a cada word
+		paddw xmm2, xmm4
+		paddw xmm3, xmm4
 
-		; paso los valores a 8 bits
-		packuswb xmm5, xmm6		
+		; Saturamos y reconvertimos a bytes
+		packuswb xmm2, xmm3
 
-		; ponemos 255 en transparencia
-		movdqu xmm2, [mask_alpha]
-		por xmm5, xmm2
+		; Ponemos 255 en transparencia
+		por xmm2, xmm6
 
-		; escribimos en dest
-		movdqu [rdi], xmm5
+		; Guardamos el dato en res
+		movdqu [rdi], xmm2
 
-		; chequeo si termino
-		add r9, 1
+		; Validamos si terminó
+		inc r9
 		cmp r9, r10
-		je .fin	
-
-		;avanzamos a los proximos 4 pixeles
-		add rsi, 16
+		je .end
+		
+		; Iteramos
 		add rdi, 16
-		jmp .ciclo
+		add rsi, 16
+		jmp .loop
 
-	.fin:
-		;epilogo
+	.end:
+		; Epilogo
 		pop rbp
 		ret
 
@@ -134,101 +111,96 @@ ej2b:
 	; r/m8  = uint8_t  amount [r8]
 	; r/m64 = uint8_t* mask [r9]
 
-	;prologo
+	; Prologo
 	push rbp
 	mov rbp, rsp
 
-	;# iteraciones = totalPixeles / pixelPorIteracion = width * height / 4
+	; # Iteraciones = totalPixeles / pixelPorIteracion = width * height / 4
 	mov r10, rdx 
 	imul r10, rcx
 	shr r10, 2 
 
-	;cargo las mascaras
-	movdqu xmm13, [todos128] ; 8 words con el valor 128
-	movdqu xmm9, [mask_ej2b]
-	movdqu xmm11, [mask_alpha]
+	; Mascaras
+	; XMM4 <-- Mask 128
+	; XMM6 <-- Mask 255
+	movdqu xmm4, [mask128]
+	movdqu xmm6, [maskAlpha]
 
-	; ammount a xmm4 (8 words con el valor de amount)
-	movdqu xmm3, [mask_ammount] 
+	; Pasamos el contraste a 8 words en un xmm
+	; XMM1 <-- Contraste
+	movdqu xmm0, [maskContraste] 
 	movzx eax, r8b        
-	movd xmm4, eax       
-	pshufb xmm4, xmm3 
+	movd xmm1, eax       
+	pshufb xmm1, xmm0
 
-	.ciclo:
-		; leo los 4 pixeles de src
-		movdqu xmm5, [rsi]
-		movdqa xmm10, xmm5
+	; Loop
+	xor r11, r11 ; i
+	.loop:			
+		; Leemos los 4 pixeles
+		movdqu xmm2, [rsi] ; tengo los 4 pixeles acá 
+		movdqu xmm5, xmm2 ; Copia imagen original
 
-		; paso de 8bits a 16bits
-		movdqu xmm6, xmm5
+		; Distribuyo en dos XMM los 4 pixeles de la iteracion (xmm2, xmm3)
+		movdqu xmm3, xmm2
 		pxor xmm0, xmm0
-		punpcklbw xmm5, xmm0
-		punpckhbw xmm6, xmm0
+		punpcklbw xmm2, xmm0
+		punpckhbw xmm3, xmm0
 
-		; resto 128 a cada componente de los 4 pixeles
-		psubw xmm5, xmm13
-		psubw xmm6, xmm13
+		; Restamos 128 en cada color (como word)
+		psubw xmm2, xmm4
+		psubw xmm3, xmm4
 
-		; multiplico por amount
-		pmullw xmm5, xmm4
-		pmullw xmm6, xmm4
+		; Multiplicamos por C
+		pmullw xmm2, xmm1
+		pmullw xmm3, xmm1
 
-		; divido por 32
-		psraw xmm5, 5
-		psraw xmm6, 5
+		; Dividimos por 32
+		psraw xmm2, 5
+		psraw xmm3, 5
 
-		; sumo 128
-		paddw xmm5, xmm13
-		paddw xmm6, xmm13
+		; Sumamos 128 a cada word
+		paddw xmm2, xmm4
+		paddw xmm3, xmm4
 
-		; paso los valores a 8 bits
-		packuswb xmm5, xmm6		
+		; Saturamos y reconvertimos a bytes
+		packuswb xmm2, xmm3
 
-		; ponemos 255 en transparencia
-		por xmm5, xmm11
+		; Ponemos 255 en transparencia
+		por xmm2, xmm6
 
-		; aplicamos la mascara
-		movdqu xmm15, [r9] ; leemos mascara
-		pshufb xmm15, xmm9 ;  
-		pand xmm5, xmm15   ; ponemos 0 en los valores de los pixeles no marcados en la mascara de xmm5	
-						   ; en los marcados ponemos el valor modificado
-		pandn xmm15, xmm10 ; a la imagen original le ponemos 0 a los pixeles marcados
-		por xmm5, xmm15	   ; juntamos las imagenes
+		; Validamos si hay que aplicar el filtro o no
+		movdqu xmm7, [r9] ; aca tengo mask de 16 pixeles, pero yo proceso de a 4
+		pmovzxbd xmm7, xmm7
+		pslld xmm7, 31
+		psrad xmm7, 31 ; xmm7 tiene una dword con 0 si no hay que aplicarlo, sino 0xFFFFFFFF
 
-		; escribimos en dest el resultado
-		movdqu [rdi], xmm5
+		pand xmm2, xmm7 ; En el filtro ponemos en 0 los pixeles que no deben ser modificados		
+		; xmm7 = ~xmm7 & xmm5 
+		pandn xmm7, xmm5 ; En la original ponemos 0 los pixeles que deben quedar como el filtro
+					
+		; Juntamos la imagen original con la del filtro
+		por xmm2, xmm7
 
-		; chequeo si termino
-		sub r10, 1
-		cmp r10, 0
-		je .fin	
+		; Guardamos el dato en res
+		movdqu [rdi], xmm2
 
-		; avanzamos la mascara
-		add r9, 4
-
-		;avanzamos a los proximos 4 pixeles
-		add rsi, 16
+		; Validamos si terminó
+		inc r11
+		cmp r11, r10
+		je .end
+		
+		; Iteramos
 		add rdi, 16
-		jmp .ciclo
+		add rsi, 16
+		add r9, 4		; mask
+		jmp .loop
 
-	.fin:
-		;epilogo
+	.end:
+		; Epilogo
 		pop rbp
 		ret
 
 ; [IMPLEMENTACIÓN OPCIONAL]
-; El enunciado sólo solicita "la idea" de este ejercicio.
-;
-; Dada una imagen origen ajusta su contraste de acuerdo a la parametrización
-; provista.
-;
-; Parámetros:
-;   - dst:     La imagen destino. Es RGBA (8 bits sin signo por canal).
-;   - src:     La imagen origen. Es RGBA (8 bits sin signo por canal).
-;   - width:   El ancho en píxeles de `dst`, `src` y `mask`.
-;   - height:  El alto en píxeles de `dst`, `src` y `mask`.
-;   - control: Una imagen que que regula el nivel de intensidad del filtro en
-;              cada píxel. Es en escala de grises a 8 bits por canal.
 global ej2c
 ej2c:
 	; Te recomendamos llenar una tablita acá con cada parámetro y su

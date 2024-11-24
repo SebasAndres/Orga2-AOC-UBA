@@ -66,9 +66,9 @@ es_indice_ordenado:
         mov rsi, [r14 + r11 * 8] ; rdi = inventario[indice[i+1]]
 
         ; Llamar al comparador
-        call r13               ; ax = comparador(inventario[indice[i]], inventario[indice[i+1]])
-        cmp ax, 0                ; ¿comparador() == true?
-        je .end         ; Si es true, retornar false
+        call r13        ; ax = comparador(inventario[indice[i]], inventario[indice[i+1]])
+        cmp ax, 0       ; ¿comparador() == false?
+        je .end         ; Si el comparador da false, terminar y retornar false (uso el mismo eax)
 
         inc r8                   ; i++
         add r15, 2                  

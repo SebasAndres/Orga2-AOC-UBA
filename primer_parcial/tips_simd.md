@@ -62,3 +62,5 @@ Intrucciones SIMD + usadas
 ### pcmpgtb
 
 ### pblendvb
+
+### pmovsxwd
