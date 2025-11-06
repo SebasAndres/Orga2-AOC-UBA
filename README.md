@@ -80,5 +80,3 @@ A continuación te presentamos el programa de la materia:
 - Técnicas de prefetch en cache.
 - Threading.
 - Optimización en procesadores multicore.
-
-# Orga2-AOC-UBA
